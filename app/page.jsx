@@ -262,7 +262,8 @@ export default function Dashboard() {
               {env.hasKey && env.hasWorkflow ? "Ready" : env.hasKey ? "No Workflow" : "No API Key"}
             </span>
           )}
-          <Link href="/verify" style={S.navLink}>🔍 Verify</Link>
+          <Link href="/verify"   style={S.navLink}>🪪 Verify</Link>
+          <Link href="/lookup"   style={S.navLink}>🔎 Lookup</Link>
           <Link href="/webhooks" style={S.navLink}>🔔 Webhooks</Link>
           <a href="https://business.didit.me" target="_blank" rel="noreferrer" style={S.navLink}>
             ↗ Console

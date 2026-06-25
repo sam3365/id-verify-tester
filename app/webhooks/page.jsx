@@ -95,8 +95,9 @@ export default function WebhooksPage() {
           <button style={S.back} onClick={() => setPolling((p) => !p)}>
             {polling ? "⏸ Pause" : "▶ Resume"}
           </button>
-          <Link href="/verify" style={S.back}>🔍 Verify</Link>
-          <Link href="/" style={S.back}>← Dashboard</Link>
+          <Link href="/verify"  style={S.back}>🪪 Verify</Link>
+          <Link href="/lookup"  style={S.back}>🔎 Lookup</Link>
+          <Link href="/"        style={S.back}>← Dashboard</Link>
         </div>
       </header>
 

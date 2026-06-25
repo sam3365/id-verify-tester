@@ -88,14 +88,24 @@ function handleEvent(body) {
     case "status.updated":
       // Session status changed — primary event to act on
       switch (status) {
-        case "Approved":
+        case "Approved": {
+          // ── LOOKUP KEY ──────────────────────────────────────────────────
+          // Use session_id to query GET /v3/session/{session_id}/decision/
+          // for the full user record (name, DOB, address, document images).
+          // vendor_data is YOUR internal user ID — use it to link back to
+          // your own user table.
+          const idv = body.decision?.id_verifications?.[0];
+          console.log(`✅ Approved | session_id: ${session_id} | vendor_data: ${vendor_data}`);
+          if (idv) {
+            console.log(`   Name: ${idv.first_name} ${idv.last_name} | DOB: ${idv.date_of_birth} | Doc: ${idv.document_type}`);
+          }
           // TODO: mark user as verified in your DB
-          // user.verified = true; store decision data from body.decision
-          console.log(`✅ Approved | session: ${session_id} | vendor: ${vendor_data}`);
+          // await db.users.update({ verified: true, session_id }, { where: { id: vendor_data } });
           break;
+        }
         case "Declined":
           // TODO: user.verification_status = "declined"; log body.decision warnings
-          console.log(`❌ Declined | session: ${session_id} | vendor: ${vendor_data}`);
+          console.log(`❌ Declined | session_id: ${session_id} | vendor_data: ${vendor_data}`);
           break;
         case "In Review":
           // TODO: user.verification_status = "pending_review"
