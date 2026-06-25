@@ -7,7 +7,7 @@ export default function ThemeToggle() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem("stripe-identity-theme") || "dark";
+    const stored = localStorage.getItem("didit-identity-theme") || "dark";
     setTheme(stored);
     setMounted(true);
   }, []);
@@ -16,7 +16,7 @@ export default function ThemeToggle() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
     document.documentElement.setAttribute("data-theme", next);
-    localStorage.setItem("stripe-identity-theme", next);
+    localStorage.setItem("didit-identity-theme", next);
   };
 
   if (!mounted) return null;

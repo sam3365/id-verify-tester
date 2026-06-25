@@ -20,11 +20,11 @@ const S = {
     fontSize: "0.7rem", background: "var(--accent)", color: "#fff",
     padding: "2px 8px", borderRadius: 999, fontWeight: 600, letterSpacing: ".04em",
   },
-  modeBadge: (isTest) => ({
+  statusBadge: (ok) => ({
     fontSize: "0.7rem",
-    background: isTest ? "#92400e" : "#14532d",
-    color:      isTest ? "#fde68a" : "#bbf7d0",
-    border:     `1px solid ${isTest ? "#d97706" : "#16a34a"}`,
+    background: ok ? "#14532d" : "#92400e",
+    color:      ok ? "#bbf7d0" : "#fde68a",
+    border:     `1px solid ${ok ? "#16a34a" : "#d97706"}`,
     padding: "2px 10px", borderRadius: 999, fontWeight: 600, letterSpacing: ".04em",
     display: "flex", alignItems: "center", gap: 5,
   }),
@@ -149,7 +149,7 @@ export default function Dashboard() {
       data.forEach((s) => (initial[s.id] = "idle"));
       setCardState(initial);
     });
-    fetch("/api/env").then((r) => r.json()).then(setEnv);
+    fetch("/api/env").then((r) => r.json()).then((data) => setEnv(data));
   }, []);
 
   useEffect(() => {
@@ -253,22 +253,20 @@ export default function Dashboard() {
       <header style={S.header}>
         <h1 style={S.h1}>
           <span style={{ fontSize: "1.5rem" }}>🪪</span>
-          Stripe Identity Tester
+          Didit Identity Tester
         </h1>
         <div style={S.headerRight}>
           {env && (
-            <span style={S.modeBadge(env.isTest)}>
-              <span>{env.isTest ? "⚠️" : "✓"}</span>
-              {env.label}
+            <span style={S.statusBadge(env.hasKey && env.hasWorkflow)}>
+              <span>{env.hasKey && env.hasWorkflow ? "✓" : "⚠️"}</span>
+              {env.hasKey && env.hasWorkflow ? "Ready" : env.hasKey ? "No Workflow" : "No API Key"}
             </span>
           )}
           <Link href="/verify" style={S.navLink}>🔍 Verify</Link>
           <Link href="/webhooks" style={S.navLink}>🔔 Webhooks</Link>
-          {env?.dashboardUrl && (
-            <a href={env.dashboardUrl} target="_blank" rel="noreferrer" style={S.navLink}>
-              ↗ Dashboard
-            </a>
-          )}
+          <a href="https://business.didit.me" target="_blank" rel="noreferrer" style={S.navLink}>
+            ↗ Console
+          </a>
           <span style={S.badge}>DEV</span>
         </div>
       </header>
@@ -319,7 +317,7 @@ export default function Dashboard() {
                 <span style={{ fontSize: "2.5rem" }}>🪪</span>
                 <p style={{ fontSize: "0.9rem" }}>Select a suite and click Run to start testing.</p>
                 <p style={{ fontSize: "0.78rem", color: "var(--text-dim)" }}>
-                  Make sure STRIPE_SECRET_KEY is set in .env.local
+                  Make sure DIDIT_API_KEY and DIDIT_WORKFLOW_ID are set in .env.local
                 </p>
               </div>
             ) : (

@@ -1,30 +1,28 @@
-import { stripe } from "@/lib/stripe-client.js";
+import { didit } from "@/lib/didit-client.js";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/identity/sessions?limit=10&status=verified
- * Lists VerificationSessions with optional filters.
+ * GET /api/identity/sessions?limit=10&status=Approved
+ *
+ * Lists verification sessions with optional filters.
+ * Docs: https://docs.didit.me/sessions-api/list-sessions
  */
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const limit  = parseInt(searchParams.get("limit")  ?? "10", 10);
+  const limit  = searchParams.get("limit")  ?? "10";
   const status = searchParams.get("status") ?? undefined;
 
   try {
-    const list = await stripe.identity.verificationSessions.list({
+    const result = await didit.sessions.list({
       limit,
       ...(status ? { status } : {}),
     });
-    return Response.json({
-      data:     list.data,
-      has_more: list.has_more,
-      count:    list.data.length,
-    });
+    return Response.json(result);
   } catch (err) {
     return Response.json(
-      { error: err.message, code: err.code },
-      { status: err.statusCode ?? 500 }
+      { error: err.message, data: err.data },
+      { status: err.status ?? 500 }
     );
   }
 }

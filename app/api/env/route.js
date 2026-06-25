@@ -1,17 +1,19 @@
-import { isTestMode } from "@/lib/stripe-client.js";
-
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const hasKey      = !!process.env.DIDIT_API_KEY;
+  const hasWorkflow = !!(
+    process.env.DIDIT_WORKFLOW_ID &&
+    process.env.DIDIT_WORKFLOW_ID !== "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  );
   const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
-  const isTest  = isTestMode;
 
   return Response.json({
+    hasKey,
+    hasWorkflow,
+    workflowId:   hasWorkflow ? process.env.DIDIT_WORKFLOW_ID : null,
     baseUrl,
-    isTest,
-    label:      isTest ? "Test Mode" : "Live Mode",
-    dashboardUrl: isTest
-      ? "https://dashboard.stripe.com/test/identity/verification-sessions"
-      : "https://dashboard.stripe.com/identity/verification-sessions",
+    dashboardUrl: "https://business.didit.me",
+    docsUrl:      "https://docs.didit.me",
   });
 }

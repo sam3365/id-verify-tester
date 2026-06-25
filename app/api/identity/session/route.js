@@ -1,64 +1,58 @@
-import { stripe, BASE_URL } from "@/lib/stripe-client.js";
+import { didit, BASE_URL } from "@/lib/didit-client.js";
 
 export const dynamic = "force-dynamic";
 
 /**
  * POST /api/identity/session
- * Creates a new VerificationSession and returns its client_secret.
- * The client uses the client_secret to launch the Stripe Identity modal
- * via stripe.verifyIdentity(clientSecret).
+ *
+ * Creates a Didit verification session server-side and returns the
+ * hosted verification URL plus the session_id.
+ *
+ * The client redirects the user to `url` — Didit's hosted verification page.
+ * After the user completes (or abandons) the flow, Didit redirects back to
+ * the callback URL with ?verificationSessionId={id}&status={status}.
  *
  * Body (optional JSON):
  * {
- *   type?: "document" | "id_number",       default: "document"
- *   requireSelfie?: boolean,               default: true
- *   requireIdNumber?: boolean,             default: false
- *   metadata?: Record<string, string>
+ *   vendorData?: string      — your internal user ID (recommended)
+ *   language?:  string       — ISO 639-1 code, default "en"
+ *   metadata?:  object
  * }
+ *
+ * Docs: https://docs.didit.me/sessions-api/create-session
  */
 export async function POST(request) {
   try {
-    const body = await request.json().catch(() => ({}));
+    const body       = await request.json().catch(() => ({}));
+    const workflowId = process.env.DIDIT_WORKFLOW_ID;
 
-    const type          = body.type          ?? "document";
-    const requireSelfie = body.requireSelfie ?? true;
-    const requireIdNum  = body.requireIdNumber ?? false;
-    const metadata      = body.metadata ?? {};
-
-    const sessionParams = {
-      type,
-      metadata: { source: "stripe-identity-tester", ...metadata },
-      return_url: `${BASE_URL}/verify/complete`,
-    };
-
-    if (type === "document") {
-      sessionParams.options = {
-        document: {
-          allowed_types:          ["driving_license", "passport", "id_card"],
-          require_id_number:      requireIdNum,
-          require_live_capture:   true,
-          require_matching_selfie: requireSelfie,
-        },
-      };
-    } else if (type === "id_number") {
-      sessionParams.options = {
-        id_number: {},
-      };
+    if (!workflowId || workflowId === "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx") {
+      return Response.json(
+        { error: "DIDIT_WORKFLOW_ID is not configured. Add it to .env.local." },
+        { status: 500 }
+      );
     }
 
-    const session = await stripe.identity.verificationSessions.create(sessionParams);
+    const session = await didit.sessions.create({
+      workflow_id:     workflowId,
+      vendor_data:     body.vendorData ?? `tester-${Date.now()}`,
+      callback:        `${BASE_URL}/verify/complete`,
+      callback_method: "both",
+      language:        body.language ?? "en",
+      metadata:        { source: "id-verify-tester", ...body.metadata },
+    });
 
     return Response.json({
-      id:            session.id,
-      client_secret: session.client_secret,
-      status:        session.status,
-      url:           session.url,
-      type:          session.type,
+      session_id:     session.session_id,
+      session_number: session.session_number,
+      url:            session.url,
+      status:         session.status,
+      vendor_data:    session.vendor_data,
     });
   } catch (err) {
     return Response.json(
-      { error: err.message, code: err.code },
-      { status: err.statusCode ?? 500 }
+      { error: err.message, data: err.data },
+      { status: err.status ?? 500 }
     );
   }
 }

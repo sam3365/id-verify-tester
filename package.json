@@ -1,7 +1,7 @@
 {
-  "name": "stripe-identity-tester",
+  "name": "id-verify-tester",
   "version": "1.0.0",
-  "description": "Next.js test harness for Stripe Identity verification APIs",
+  "description": "Next.js test harness for Didit identity verification APIs",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,7 +13,6 @@
     "@upstash/redis": "^1.38.0",
     "next": "^15.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "stripe": "^17.0.0"
+    "react-dom": "^19.0.0"
   }
 }

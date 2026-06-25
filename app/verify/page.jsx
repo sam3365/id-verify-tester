@@ -1,19 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 
 /**
- * /verify — Launch the Stripe Identity hosted verification modal.
+ * /verify — Create a Didit session and redirect the user to the hosted
+ * verification flow at verify.didit.me.
  *
  * Flow:
- *  1. User picks options (type, selfie, id_number) and clicks "Start Verification"
- *  2. We POST to /api/identity/session → get back client_secret
- *  3. We load Stripe.js and call stripe.verifyIdentity(client_secret)
- *  4. Stripe opens its hosted modal — user completes the check
- *  5. On success Stripe redirects to /verify/complete
+ *  1. User clicks "Start Verification"
+ *  2. POST /api/identity/session (server-side, uses DIDIT_API_KEY)
+ *  3. Server returns { url, session_id }
+ *  4. Browser redirects to `url` — Didit's hosted verification page
+ *  5. User completes ID check, liveness, etc. on Didit's UI
+ *  6. Didit redirects back to /verify/complete?verificationSessionId=xxx&status=Approved
  *
- * Base44 / DateRealGirls integration notes are embedded as comments throughout.
+ * Base44 / DateRealGirls integration notes are embedded as comments.
  */
 
 const S = {
@@ -27,16 +29,7 @@ const S = {
   sub: { fontSize: "0.85rem", color: "var(--text-dim)", lineHeight: 1.5, marginBottom: 24 },
   fieldset: { border: "none", padding: 0, marginBottom: 20 },
   legend: { fontSize: "0.8rem", fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 },
-  radioGroup: { display: "flex", gap: 10 },
-  radioLabel: (selected) => ({
-    display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
-    padding: "8px 14px", borderRadius: 8,
-    border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
-    background: selected ? "rgba(99,91,255,0.08)" : "var(--surface2)",
-    fontSize: "0.85rem", fontWeight: selected ? 600 : 400,
-    transition: "border-color .15s, background .15s",
-  }),
-  checkbox: { display: "flex", alignItems: "center", gap: 10, fontSize: "0.88rem", cursor: "pointer", marginBottom: 8 },
+  input: { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--text)", fontSize: "0.88rem" },
   divider: { borderTop: "1px solid var(--border)", margin: "20px 0" },
   btn: (loading) => ({
     width: "100%", padding: "13px", borderRadius: "var(--radius)", border: "none",
@@ -47,7 +40,7 @@ const S = {
   }),
   resultBox: (type) => ({
     marginTop: 16, padding: "12px 16px", borderRadius: 8,
-    background: type === "error" ? "rgba(239,68,68,0.1)" : "rgba(99,91,255,0.08)",
+    background: type === "error" ? "rgba(239,68,68,0.1)" : "rgba(37,103,255,0.08)",
     border: `1px solid ${type === "error" ? "var(--err)" : "var(--border)"}`,
     fontFamily: "var(--font-mono)", fontSize: "0.8rem", color: type === "error" ? "var(--err)" : "var(--text-dim)",
     whiteSpace: "pre-wrap",
@@ -61,33 +54,25 @@ const S = {
 };
 
 export default function VerifyPage() {
-  const [type, setType]             = useState("document");
-  const [requireSelfie, setSelfie]  = useState(true);
-  const [requireIdNum, setIdNum]    = useState(false);
+  const [vendorData, setVendorData] = useState("");
   const [loading, setLoading]       = useState(false);
   const [result, setResult]         = useState(null);
-  const [stripeLoaded, setStripeLoaded] = useState(false);
-
-  // Load Stripe.js once on mount
-  useEffect(() => {
-    if (window.Stripe) { setStripeLoaded(true); return; }
-    const script = document.createElement("script");
-    script.src = "https://js.stripe.com/v3/";
-    script.async = true;
-    script.onload = () => setStripeLoaded(true);
-    document.head.appendChild(script);
-  }, []);
 
   const startVerification = async () => {
     setLoading(true);
     setResult(null);
 
     try {
-      // Step 1: Create a VerificationSession server-side
+      // Step 1: Create a session server-side
+      // In Base44 / DateRealGirls: call a custom action that creates the Didit
+      // session and returns { url, session_id } — never expose the API key client-side.
       const res = await fetch("/api/identity/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, requireSelfie, requireIdNumber: requireIdNum }),
+        body: JSON.stringify({
+          vendorData: vendorData.trim() || undefined,
+          metadata:   { source: "id-verify-tester" },
+        }),
       });
       const session = await res.json();
 
@@ -97,34 +82,19 @@ export default function VerifyPage() {
         return;
       }
 
-      setResult({ type: "info", message: `Session created: ${session.id}\nStatus: ${session.status}\nLaunching Stripe Identity modal…` });
+      setResult({
+        type: "info",
+        message: `Session created: ${session.session_id}\nStatus: ${session.status}\nRedirecting to Didit hosted verification…`,
+      });
 
-      // Step 2: Launch the Stripe Identity hosted modal
-      //
-      // Base44 / DateRealGirls integration:
-      //   Replace NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY with your Stripe publishable key.
-      //   In Base44 you would call this from a custom action or a frontend script block.
-      //   Pass the client_secret returned from your backend endpoint.
-      //
-      const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-      if (!stripePublishableKey) {
-        setResult({ type: "error", message: "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not set in .env.local" });
-        setLoading(false);
-        return;
-      }
-
-      const stripe = window.Stripe(stripePublishableKey);
-      const { error } = await stripe.verifyIdentity(session.client_secret);
-
-      if (error) {
-        setResult({ type: "error", message: `Stripe modal error: ${error.message} (${error.code})` });
-      } else {
-        // User completed the flow — Stripe will redirect to return_url (/verify/complete)
-        setResult({ type: "info", message: "Verification submitted — redirecting to /verify/complete…" });
-      }
+      // Step 2: Redirect to Didit's hosted verification page
+      // Didit appends ?verificationSessionId={id}&status={status} to the callback
+      // URL when the user finishes (or abandons) the flow.
+      setTimeout(() => {
+        window.location.href = session.url;
+      }, 800);
     } catch (err) {
       setResult({ type: "error", message: err.message });
-    } finally {
       setLoading(false);
     }
   };
@@ -132,7 +102,7 @@ export default function VerifyPage() {
   return (
     <div style={S.wrap}>
       <header style={S.header}>
-        <h1 style={S.h1}><span style={{ fontSize: "1.5rem" }}>🪪</span> Stripe Identity Tester</h1>
+        <h1 style={S.h1}><span style={{ fontSize: "1.5rem" }}>🪪</span> Didit Identity Tester</h1>
         <Link href="/" style={S.back}>← Dashboard</Link>
       </header>
 
@@ -140,42 +110,30 @@ export default function VerifyPage() {
         <div style={S.card}>
           <h2 style={S.h2}>Launch Identity Verification</h2>
           <p style={S.sub}>
-            Configures and launches the Stripe Identity hosted modal. A VerificationSession is created
-            server-side; the modal opens client-side using <code style={S.code}>stripe.verifyIdentity(clientSecret)</code>.
+            Creates a Didit verification session server-side, then redirects the user to
+            Didit&apos;s hosted verification flow. After completion, Didit redirects back to{" "}
+            <code style={S.code}>/verify/complete</code>.
           </p>
 
-          {/* Verification type */}
+          {/* Optional vendor data */}
           <fieldset style={S.fieldset}>
-            <legend style={S.legend}>Verification Type</legend>
-            <div style={S.radioGroup}>
-              {["document", "id_number"].map((t) => (
-                <label key={t} style={S.radioLabel(type === t)}>
-                  <input type="radio" name="type" value={t} checked={type === t} onChange={() => setType(t)} style={{ display: "none" }} />
-                  {t === "document" ? "📄 Document" : "🔢 ID Number"}
-                </label>
-              ))}
-            </div>
+            <legend style={S.legend}>User ID (vendor_data)</legend>
+            <input
+              style={S.input}
+              type="text"
+              placeholder="e.g. your-internal-user-id (optional)"
+              value={vendorData}
+              onChange={(e) => setVendorData(e.target.value)}
+            />
+            <p style={{ marginTop: 6, fontSize: "0.75rem", color: "var(--text-dim)" }}>
+              Binds the session to a user in the Didit console. Strongly recommended in production.
+            </p>
           </fieldset>
-
-          {/* Options */}
-          {type === "document" && (
-            <fieldset style={S.fieldset}>
-              <legend style={S.legend}>Options</legend>
-              <label style={S.checkbox}>
-                <input type="checkbox" checked={requireSelfie} onChange={(e) => setSelfie(e.target.checked)} />
-                Require matching selfie
-              </label>
-              <label style={S.checkbox}>
-                <input type="checkbox" checked={requireIdNum} onChange={(e) => setIdNum(e.target.checked)} />
-                Require ID number extraction
-              </label>
-            </fieldset>
-          )}
 
           <div style={S.divider} />
 
-          <button style={S.btn(loading || !stripeLoaded)} disabled={loading || !stripeLoaded} onClick={startVerification}>
-            {loading ? "⏳ Starting…" : !stripeLoaded ? "Loading Stripe.js…" : "🔍 Start Verification"}
+          <button style={S.btn(loading)} disabled={loading} onClick={startVerification}>
+            {loading ? "⏳ Creating session…" : "🔍 Start Verification"}
           </button>
 
           {result && (
@@ -187,17 +145,26 @@ export default function VerifyPage() {
         <div style={S.infoBox}>
           <strong>Base44 / DateRealGirls Integration Notes</strong>
           <br /><br />
-          <strong>1. Backend (Base44 custom action or Next.js API route):</strong><br />
-          Call <code style={S.code}>POST /api/identity/session</code> server-side with your Stripe secret key.
-          Return the <code style={S.code}>client_secret</code> to the frontend.<br /><br />
+          <strong>1. Backend (Base44 custom action or API route):</strong><br />
+          Call <code style={S.code}>POST /api/identity/session</code> server-side with your{" "}
+          <code style={S.code}>DIDIT_API_KEY</code> and <code style={S.code}>DIDIT_WORKFLOW_ID</code>.
+          Return the <code style={S.code}>url</code> and <code style={S.code}>session_id</code> to the frontend.<br /><br />
           <strong>2. Frontend (Base44 page or Next.js component):</strong><br />
-          Load <code style={S.code}>https://js.stripe.com/v3/</code>, then call<br />
-          <code style={S.code}>stripe.verifyIdentity(clientSecret)</code> to open the modal.<br /><br />
-          <strong>3. Webhook (to update member status after verification):</strong><br />
-          Listen for <code style={S.code}>identity.verification_session.verified</code> at<br />
-          <code style={S.code}>/api/webhooks/stripe</code> and set the member&apos;s verified flag in your DB.<br /><br />
-          <strong>4. Test mode documents:</strong><br />
-          Use Stripe&apos;s <a href="https://docs.stripe.com/identity/test-mode" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>test identity documents</a> to simulate pass/fail scenarios without real IDs.
+          Redirect the user to <code style={S.code}>session.url</code> — no Stripe.js or SDK needed.
+          Didit&apos;s entire flow runs on their hosted page.<br /><br />
+          <strong>3. Callback:</strong><br />
+          Didit appends <code style={S.code}>?verificationSessionId=xxx&status=Approved</code> to your
+          return URL. Handle this in <code style={S.code}>/verify/complete</code>.<br /><br />
+          <strong>4. Webhook (update member status):</strong><br />
+          Listen for <code style={S.code}>status.updated</code> with <code style={S.code}>status: &quot;Approved&quot;</code>{" "}
+          at <code style={S.code}>/api/webhooks/didit</code> and set the member&apos;s verified flag in your DB.<br /><br />
+          <strong>5. Free tier:</strong><br />
+          Didit gives 500 free verifications per feature per month — no credit card needed for sandbox.
+          Visit{" "}
+          <a href="https://business.didit.me" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
+            business.didit.me
+          </a>{" "}
+          to create a free sandbox application.
         </div>
       </main>
     </div>
