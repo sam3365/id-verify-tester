@@ -54,7 +54,7 @@ const S = {
 };
 
 export default function VerifyPage() {
-  const [vendorData, setVendorData] = useState("");
+  const [vendorData, setVendorData] = useState(process.env.NEXT_PUBLIC_DEFAULT_VENDOR_DATA ?? "");
   const [loading, setLoading]       = useState(false);
   const [result, setResult]         = useState(null);
 
