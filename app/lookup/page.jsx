@@ -203,13 +203,23 @@ export default function LookupPage() {
   const imgs  = subj?.images ?? {};
   const doc   = subj?.document ?? {};
 
-  // Also check the raw id_verification node in case named fields were missing
-  const rawIdv = result?.id_verifications?.[0]?._raw ?? {};
-  const frontSrc  = imgs.front  ?? rawIdv.document_front_image ?? rawIdv.front_image ?? rawIdv.id_front  ?? rawIdv.front  ?? null;
-  const backSrc   = imgs.back   ?? rawIdv.document_back_image  ?? rawIdv.back_image  ?? rawIdv.id_back   ?? rawIdv.back   ?? null;
-  const selfieSrc = imgs.selfie ?? result?.liveness_checks?.[0]?.selfie_image
-                                ?? result?.liveness_checks?.[0]?._raw?.portrait
-                                ?? result?.liveness_checks?.[0]?._raw?.selfie_image ?? null;
+  // Fall back to _raw nodes in case any named fields were null
+  const rawIdv  = result?.id_verifications?.[0]?._raw ?? {};
+  const rawLive = result?.liveness_checks?.[0] ?? {};
+
+  // Confirmed Didit V3 field names (from real API response):
+  //   id_verifications[]:  front_image, back_image, portrait_image
+  //   liveness_checks[]:   reference_image  (the live selfie captured during liveness)
+  const frontSrc  = imgs.front  ?? rawIdv.front_image ?? rawIdv.document_front_image ?? null;
+  const backSrc   = imgs.back   ?? rawIdv.back_image  ?? rawIdv.document_back_image  ?? null;
+  const selfieSrc =
+    // 1. Liveness selfie (reference_image, mapped → selfie_image in API route)
+    rawLive.selfie_image     ??
+    rawLive.reference_image  ??
+    // 2. Portrait extracted from the ID document itself
+    imgs.portrait            ??
+    rawIdv.portrait_image    ??
+    null;
 
   return (
     <div style={S.wrap}>

@@ -46,14 +46,16 @@ export async function GET(_req, { params }) {
       personal_number:      v.personal_number      ?? null,
       // Address (may be on the document or separately verified)
       address:              v.address              ?? null,
-      // Document images — try all known Didit field name variants.
-      // May be a signed URL (https://…) or a raw base64 string.
-      document_front_image:
-        v.document_front_image ?? v.front_image ?? v.id_front ??
-        v.documentFrontImage   ?? v.front       ?? null,
-      document_back_image:
-        v.document_back_image  ?? v.back_image  ?? v.id_back  ??
-        v.documentBackImage    ?? v.back        ?? null,
+      // Document images — confirmed field names from Didit V3 API:
+      //   portrait_image  = headshot extracted from the ID document itself
+      //   front_image     = cropped front of the ID
+      //   back_image      = cropped back of the ID
+      //   full_front_image / full_back_image = uncropped originals
+      portrait_image:       v.portrait_image       ?? null,
+      document_front_image: v.front_image          ?? v.document_front_image ?? null,
+      document_back_image:  v.back_image           ?? v.document_back_image  ?? null,
+      full_front_image:     v.full_front_image     ?? null,
+      full_back_image:      v.full_back_image      ?? null,
       // MRZ / barcode raw strings (useful for cross-checking)
       mrz_line1: v.mrz_line1 ?? null,
       mrz_line2: v.mrz_line2 ?? null,
@@ -69,10 +71,9 @@ export async function GET(_req, { params }) {
       status:   l.status,
       method:   l.method  ?? null,
       score:    l.score   ?? null,
-      // Try all known portrait/selfie field name variants
-      selfie_image:
-        l.selfie_image  ?? l.portrait       ?? l.face_image  ??
-        l.selfieImage   ?? l.portrait_image ?? l.photo       ?? null,
+      // Confirmed field name from Didit V3 liveness_checks node:
+      //   reference_image = selfie captured during the liveness check
+      selfie_image: l.reference_image ?? l.selfie_image ?? l.portrait ?? null,
       warnings: (l.warnings ?? []).map((w) => w.risk),
     }));
 
@@ -120,9 +121,10 @@ export async function GET(_req, { params }) {
           expires:    primary.expiration_date,
         },
         images: {
-          front:  primary.document_front_image,
-          back:   primary.document_back_image,
-          selfie: livenessChecks[0]?.selfie_image ?? null,
+          portrait: primary.portrait_image,
+          front:    primary.document_front_image,
+          back:     primary.document_back_image,
+          selfie:   livenessChecks[0]?.selfie_image ?? null,
         },
       } : null,
 
