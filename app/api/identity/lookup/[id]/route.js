@@ -46,14 +46,21 @@ export async function GET(_req, { params }) {
       personal_number:      v.personal_number      ?? null,
       // Address (may be on the document or separately verified)
       address:              v.address              ?? null,
-      // Document images — URLs signed by Didit (time-limited)
-      document_front_image: v.document_front_image ?? null,
-      document_back_image:  v.document_back_image  ?? null,
+      // Document images — try all known Didit field name variants.
+      // May be a signed URL (https://…) or a raw base64 string.
+      document_front_image:
+        v.document_front_image ?? v.front_image ?? v.id_front ??
+        v.documentFrontImage   ?? v.front       ?? null,
+      document_back_image:
+        v.document_back_image  ?? v.back_image  ?? v.id_back  ??
+        v.documentBackImage    ?? v.back        ?? null,
       // MRZ / barcode raw strings (useful for cross-checking)
       mrz_line1: v.mrz_line1 ?? null,
       mrz_line2: v.mrz_line2 ?? null,
       // Warnings
       warnings: (v.warnings ?? []).map((w) => ({ risk: w.risk, description: w.short_description })),
+      // Raw node for debugging — lets UI find image fields even if names differ
+      _raw: v,
     }));
 
     // ── Liveness ─────────────────────────────────────────────────────────────
@@ -62,7 +69,10 @@ export async function GET(_req, { params }) {
       status:   l.status,
       method:   l.method  ?? null,
       score:    l.score   ?? null,
-      selfie_image: l.selfie_image ?? null,
+      // Try all known portrait/selfie field name variants
+      selfie_image:
+        l.selfie_image  ?? l.portrait       ?? l.face_image  ??
+        l.selfieImage   ?? l.portrait_image ?? l.photo       ?? null,
       warnings: (l.warnings ?? []).map((w) => w.risk),
     }));
 
