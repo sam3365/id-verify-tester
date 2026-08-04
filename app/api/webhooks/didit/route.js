@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { pushEvent, hasEvent } from "@/lib/webhooks/store.js";
+import { evaluateVerification } from "@/lib/review-logic.js";
+import { DIDIT_BASE_URL } from "@/lib/didit-client.js";
 
 export const dynamic = "force-dynamic";
 
@@ -81,8 +83,54 @@ function verifySimple(parsed, sig, timestampHdr, secret) {
 
 // ── Webhook event handler ────────────────────────────────────────────────────
 
-function handleEvent(body) {
+/**
+ * Extract gender / date_of_birth / age from the webhook payload's
+ * id_verifications[0], falling back to GET /v3/session/{id}/decision/
+ * when any field is missing — mirrors the production webhook's fallback.
+ */
+async function extractIdentityFields(body, sessionId) {
+  const idv = (body.id_verifications ?? body.decision?.id_verifications ?? [])[0];
+  let diditGender = idv?.gender ?? null;
+  let diditDob = idv?.date_of_birth ?? null;
+  let diditAge = typeof idv?.age === "number" ? idv.age : null;
+
+  if ((!diditGender || !diditDob || diditAge === null) && process.env.DIDIT_API_KEY) {
+    try {
+      const res = await fetch(`${DIDIT_BASE_URL}/session/${sessionId}/decision/`, {
+        method: "GET",
+        headers: { "x-api-key": process.env.DIDIT_API_KEY, "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const decision = await res.json();
+        const decisionIdv = (decision.id_verifications ?? [])[0];
+        if (!diditGender && decisionIdv?.gender) diditGender = decisionIdv.gender;
+        if (!diditDob && decisionIdv?.date_of_birth) diditDob = decisionIdv.date_of_birth;
+        if (diditAge === null && typeof decisionIdv?.age === "number") diditAge = decisionIdv.age;
+      }
+    } catch {
+      // proceed without decision data if the fallback fetch fails
+    }
+  }
+
+  return { diditGender, diditDob, diditAge, idv };
+}
+
+/**
+ * Build the "on-file profile" to compare against, from optional
+ * TEST_EXPECTED_* env vars. Lets you simulate a known member record
+ * without a real MemberProfile database — see .env.example.
+ */
+function testProfile() {
+  const gender = process.env.TEST_EXPECTED_GENDER || undefined;
+  const ageRaw = process.env.TEST_EXPECTED_AGE;
+  const age = ageRaw ? Number(ageRaw) : undefined;
+  const date_of_birth = process.env.TEST_EXPECTED_DOB || undefined;
+  return { gender, age, date_of_birth };
+}
+
+async function handleEvent(body) {
   const { webhook_type, status, session_id, event_id, vendor_data } = body;
+  let review = null;
 
   switch (webhook_type) {
     case "status.updated":
@@ -94,13 +142,31 @@ function handleEvent(body) {
           // for the full user record (name, DOB, address, document images).
           // vendor_data is YOUR internal user ID — use it to link back to
           // your own user table.
-          const idv = body.decision?.id_verifications?.[0];
           console.log(`✅ Approved | session_id: ${session_id} | vendor_data: ${vendor_data}`);
+
+          const { diditGender, diditDob, diditAge, idv } = await extractIdentityFields(body, session_id);
           if (idv) {
             console.log(`   Name: ${idv.first_name} ${idv.last_name} | DOB: ${idv.date_of_birth} | Doc: ${idv.document_type}`);
           }
-          // TODO: mark user as verified in your DB
-          // await db.users.update({ verified: true, session_id }, { where: { id: vendor_data } });
+
+          // ── Gender / age cross-checks (mirrors production webhook) ──────
+          const hardReject = process.env.VERIFICATION_MISMATCH_ACTION === "hard_reject";
+          review = evaluateVerification({
+            diditGender,
+            diditDob,
+            diditAge,
+            profile: testProfile(),
+            hardReject,
+          });
+          console.log(
+            `   Review outcome: ${review.outcome}` +
+            (review.gender_review_needed ? " | gender_review_needed" : "") +
+            (review.age_review_needed ? " | age_review_needed" : "") +
+            (review.verification_rejection_reason ? ` | reason: ${review.verification_rejection_reason}` : "")
+          );
+
+          // TODO: mark user as verified/flagged/rejected in your DB per `review`
+          // await db.users.update({ ...review, session_id }, { where: { id: vendor_data } });
           break;
         }
         case "Declined":
@@ -158,6 +224,8 @@ function handleEvent(body) {
     default:
       console.warn(`Unknown webhook_type: ${webhook_type}`);
   }
+
+  return review;
 }
 
 // ── Route handler ────────────────────────────────────────────────────────────
@@ -238,12 +306,11 @@ export async function POST(request) {
   }
 
   // ── Step 7: Process event by webhook_type ─────────────────────────────────
-  // Return 2xx immediately; handleEvent logs synchronously.
   // Move DB writes here or kick off a background job for heavy work.
-  handleEvent(body);
+  const review = await handleEvent(body);
 
   // ── Step 8: Persist for the /webhooks UI page ────────────────────────────
-  await pushEvent(body);
+  await pushEvent(review ? { ...body, _review: review } : body);
 
   return Response.json({ received: true });
 }

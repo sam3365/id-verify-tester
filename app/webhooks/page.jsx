@@ -32,6 +32,19 @@ const EVENT_COLORS = {
   "Abandoned":           "var(--text-dim)",
 };
 
+// Age/gender review outcome (from lib/review-logic.js) → colors
+const REVIEW_COLORS = {
+  auto_verified:      "var(--ok)",
+  flagged_for_review: "#f59e0b",
+  hard_rejected:       "var(--err)",
+};
+
+const REVIEW_LABELS = {
+  auto_verified:      "✅ Auto-verified",
+  flagged_for_review: "🔍 Flagged for review",
+  hard_rejected:       "⛔ Hard-rejected",
+};
+
 const S = {
   wrap: { minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 28px", borderBottom: "1px solid var(--border)", background: "var(--surface)" },
@@ -129,6 +142,11 @@ export default function WebhooksPage() {
                 )}
                 {ev.status && (
                   <span style={{ ...S.eventId, color: eventColor(ev) }}>{ev.status}</span>
+                )}
+                {ev.review?.outcome && (
+                  <span style={S.pill(REVIEW_COLORS[ev.review.outcome] ?? "var(--text-dim)")}>
+                    {REVIEW_LABELS[ev.review.outcome] ?? ev.review.outcome}
+                  </span>
                 )}
                 <span style={S.eventTs}>{fmt(ev.receivedAt)}</span>
                 <span style={{ color: "var(--text-dim)", fontSize: "0.8rem" }}>
